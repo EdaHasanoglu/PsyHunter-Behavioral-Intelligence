@@ -1,0 +1,6 @@
+{
+    "target_id": "test_victim",
+    "timestamp": "2026-02-14 23:57:11",
+    "digital_footprint": "\n    TARGET REPORT FOR: test_victim\n    Active Platforms: Instagram, Twitter, Reddit\n    \n    [RAW LOGS]\n    - 'I lost everything in the casino last night. My life is ruined.'\n    - 'Bank keeps calling about my debts. I am so angry! #broke'\n    - 'I can't take this anymore. I want to end it all. #suicide'\n    - 'Does anyone know how to sell a kidney? I need money fast.'\n    ",
+    "source_module": "TraceHunter_OSINT_v2"
+}

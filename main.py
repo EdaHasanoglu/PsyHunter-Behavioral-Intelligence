@@ -1,108 +1,235 @@
-import json
+import streamlit as st
 from textblob import TextBlob
-from colorama import Fore, Style, init
+import plotly.graph_objects as go
+from datetime import datetime
+import json
+import os
 
-# Initialize colorama for colored output
-init(autoreset=True)
+# --- 1. PAGE CONFIGURATION ---
+st.set_page_config(page_title="PsyHunter Intelligence", page_icon="🛡️", layout="wide")
 
-def load_target_data():
-    """Loads target profile from JSON file."""
+# --- 2. CSS STYLING (ZERO GRAVITY DARK THEME) ---
+st.markdown("""
+    <style>
+    /* Main Background */
+    .stApp {
+        background-color: #000000;
+        color: #ffffff;
+    }
+    
+    /* Remove Top Padding */
+    .block-container {
+        padding-top: 0rem !important;
+        padding-bottom: 0rem !important;
+        margin-top: 1rem !important;
+    }
+    
+    /* Header Adjustment */
+    h1 {
+        margin-top: 0rem !important;
+        padding-top: 0rem !important;
+        margin-bottom: 1rem !important;
+    }
+    
+    /* Hide Streamlit Default Header */
+    header {
+        visibility: hidden;
+    }
+    
+    /* Sidebar Styling */
+    section[data-testid="stSidebar"] {
+        background-color: #050505;
+        border-right: 1px solid #333;
+        padding-top: 2rem !important;
+    }
+    
+    /* Force White Text in Sidebar */
+    section[data-testid="stSidebar"] * {
+        color: #ffffff !important;
+    }
+    
+    /* Metric Boxes */
+    div[data-testid="stMetricValue"] {
+        color: #00ff41 !important;
+        font-family: 'Courier New', monospace;
+        font-weight: bold;
+    }
+    div[data-testid="stMetricLabel"] {
+        color: #aaaaaa !important;
+    }
+    
+    /* Custom Report Box */
+    .report-box {
+        border: 1px solid #333;
+        padding: 20px;
+        border-radius: 10px;
+        background-color: #0a0a0a;
+        margin-bottom: 15px;
+    }
+    
+    /* Buttons */
+    .stButton>button {
+        background-color: #111;
+        color: #00ff41;
+        border: 1px solid #00ff41;
+        border-radius: 5px;
+        height: 50px;
+        font-weight: bold;
+    }
+    .stButton>button:hover {
+        background-color: #00ff41;
+        color: black;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# --- 3. RISK DICTIONARY ---
+RISK_LIBRARY = {
+    "Financial_Fraud": ["money", "debt", "credit", "bank", "bill", "salary", "loan", "crypto", "bitcoin", "broke", "lost", "cash"],
+    "Emotional_Crisis": ["hate", "angry", "kill", "die", "suicide", "death", "pain", "cry", "depressed", "lonely", "hopeless"],
+    "Workplace_Burnout": ["tired", "exhausted", "quit", "boss", "overtime", "stress", "hate job", "mobbing", "burnout"],
+    "High_Risk_Behavior": ["gamble", "bet", "casino", "poker", "drug", "alcohol", "drunk", "illegal", "hack", "steal"]
+}
+
+# --- 4. ANALYSIS ENGINE ---
+def deep_scan(text):
+    if not text: return 0, 0, 0, [], {}
+    
+    analysis = TextBlob(text)
+    polarity = analysis.sentiment.polarity
+    text_lower = text.lower()
+    
+    score = 20 # Baseline Risk
+    detected_tags = []
+    category_counts = {}
+
+    for category, words in RISK_LIBRARY.items():
+        count = 0
+        for word in words:
+            if word in text_lower:
+                count += 1
+                # Weighted Scoring
+                if category == "Emotional_Crisis": score += 20
+                elif category == "High_Risk_Behavior": score += 25
+                else: score += 10
+        
+        if count > 0:
+            category_counts[category] = count
+            detected_tags.append(f"{category.replace('_', ' ')}")
+
+    # Negative Sentiment Penalty
+    if polarity < -0.3: 
+        score += 15
+        detected_tags.append("Negative Sentiment")
+
+    return min(score, 100), polarity, analysis.sentiment.subjectivity, detected_tags, category_counts
+
+# --- 5. DATA INGESTION ---
+def load_tracehunter_data():
     try:
-        with open('target_data.json', 'r', encoding='utf-8') as f:
-            return json.load(f)
-    except FileNotFoundError:
-        print(Fore.RED + "[ERROR] 'target_data.json' not found!")
+        if os.path.exists("target_profile.json"):
+            with open("target_profile.json", "r", encoding="utf-8") as f:
+                return json.load(f)
+        return None
+    except:
         return None
 
-def analyze_psychology(posts):
-    """
-    Analyzes tweets to determine Sentiment (Mood) and Emotional Triggers.
-    Returns: Average Polarity Score and List of Triggers.
-    """
-    total_polarity = 0
-    keywords = []
+# --- 6. UI LAYOUT ---
 
-    print(Fore.CYAN + "\n[SYSTEM] Scanning digital footprint...")
+with st.sidebar:
+    st.title("🛡️ PsyHunter v3.0")
+    st.caption("INTEGRATED THREAT INTEL")
+    st.markdown("---")
     
-    for post in posts:
-        analysis = TextBlob(post['text'])
-        polarity = analysis.sentiment.polarity
-        total_polarity += polarity
+    st.subheader("PIPELINE CONTROL")
+    if st.button("📥 IMPORT TRACE DATA"):
+        data = load_tracehunter_data()
+        if data:
+            # Fallback for keys
+            username = data.get("username") or data.get("target_id") or "Unknown"
+            footprint = data.get("digital_footprint", "")
+            
+            st.session_state['input_text'] = footprint
+            st.session_state['target_user'] = username
+            st.session_state['run_scan'] = True
+            st.success(f"LOADED: {username.upper()}")
+        else:
+            st.error("DATA FILE MISSING")
+            
+    st.markdown("---")
+    st.markdown("**STATUS:** 🟢 ONLINE")
+
+# Main Dashboard
+st.title("👁️ Behavioral Threat Dashboard")
+st.markdown(f"TARGET IDENTITY: **{st.session_state.get('target_user', 'WAITING FOR STREAM...').upper()}**")
+
+col1, col2 = st.columns([1.5, 1])
+
+with col1:
+    user_text = st.text_area("DIGITAL FOOTPRINT STREAM", 
+                            value=st.session_state.get('input_text', ""),
+                            height=220, 
+                            placeholder="> Waiting for TraceHunter data stream...")
+    
+    if st.button("🚀 INITIATE ANALYSIS SEQUENCE", type="primary"):
+        st.session_state['run_scan'] = True
+
+with col2:
+    if st.session_state.get('run_scan') and user_text:
+        risk, pol, subj, tags, cats = deep_scan(user_text)
         
-        # Keyword Analysis (Simulating Psychological Profiling)
-        text_lower = post['text'].lower()
-        
-        # Exhaustion Triggers
-        if "exhaustion" in text_lower or "tired" in text_lower or "break" in text_lower:
-            keywords.append("Burnout / Fatigue")
-        
-        # Anger Triggers
-        if "angry" in text_lower or "fix this" in text_lower or "quit" in text_lower:
-            keywords.append("High Anger / Frustration")
-        
-        # Financial Triggers
-        if "paid" in text_lower or "wages" in text_lower or "bills" in text_lower or "wallet" in text_lower:
-            keywords.append("Financial Anxiety")
+        # Gauge Chart
+        fig = go.Figure(go.Indicator(
+            mode = "gauge+number",
+            value = risk,
+            title = {'text': "VULNERABILITY SCORE", 'font': {'color': 'white', 'size': 16}},
+            gauge = {
+                'axis': {'range': [None, 100], 'tickwidth': 1, 'tickcolor': "white"},
+                'bar': {'color': "#ff0000" if risk > 70 else "#00ff41"},
+                'bgcolor': "#111",
+                'borderwidth': 2,
+                'bordercolor': "#333",
+                'steps': [
+                    {'range': [0, 40], 'color': "#0d2b12"},
+                    {'range': [40, 75], 'color': "#3d3000"},
+                    {'range': [75, 100], 'color': "#3d0000"}]
+            }
+        ))
+        fig.update_layout(height=260, margin=dict(l=20, r=20, t=40, b=20), paper_bgcolor='rgba(0,0,0,0)', font={'color': "white"})
+        st.plotly_chart(fig, use_container_width=True)
 
-    avg_polarity = total_polarity / len(posts)
-    return avg_polarity, list(set(keywords))
-
-def generate_risk_report(target_name, polarity, triggers):
-    """
-    Generates a 'Behavioral Threat Intelligence Report'.
-    Focuses on defensive risk assessment rather than attack generation.
-    """
-    print(Fore.YELLOW + "\n" + "="*60)
-    print(Fore.YELLOW + f"🧠 PSY-HUNTER: BEHAVIORAL THREAT INTELLIGENCE")
-    print(Fore.YELLOW + f"👤 TARGET IDENTITY: {target_name}")
-    print(Fore.YELLOW + "="*60)
-
-    # 1. MOOD ANALYSIS
-    print(f"\n{Fore.WHITE}📊 EMOTIONAL BASELINE SCORE: {polarity:.2f}")
+# Detailed Report
+if st.session_state.get('run_scan') and user_text:
+    st.markdown("---")
     
-    current_mood = ""
-    risk_score = 0
+    c1, c2, c3 = st.columns(3)
     
-    if polarity < -0.1:
-        current_mood = "NEGATIVE / STRESSED 😡"
-        risk_color = Fore.RED
-        risk_score = 85
-    elif polarity > 0.1:
-        current_mood = "POSITIVE / RELAXED 😌"
-        risk_color = Fore.GREEN
-        risk_score = 20
-    else:
-        current_mood = "NEUTRAL / BALANCED 😐"
-        risk_color = Fore.BLUE
-        risk_score = 40
+    with c1:
+        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
+        st.subheader("📊 PSYCHOMETRICS")
+        st.metric("SENTIMENT", f"{pol:.2f}")
+        st.metric("SUBJECTIVITY", f"{subj:.2f}")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    print(f"Detected Mood State: {risk_color}{current_mood}")
+    with c2:
+        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
+        st.subheader("🚩 THREAT VECTORS")
+        if tags:
+            for tag in tags:
+                st.markdown(f"❌ **{tag}**")
+        else:
+            st.markdown("✅ CLEAN PROFILE")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-    # 2. VULNERABILITY TRIGGERS
-    print(f"\n{Fore.WHITE}🎯 DETECTED PSYCHOLOGICAL VULNERABILITIES:")
-    if triggers:
-        for trigger in triggers:
-            print(f"   - {Fore.RED}[CRITICAL] {trigger}")
-    else:
-        print("   - No significant emotional triggers detected.")
-
-    # 3. PREDICTIVE ATTACK VECTORS (The "Why it matters" part)
-    print(f"\n{Fore.WHITE}🛡️ PREDICTED PHISHING VECTORS (RISK ANALYSIS):")
-    
-    if "Financial Anxiety" in triggers:
-        print(f"{Fore.RED}⚠️ ALERT: Target is highly vulnerable to 'Payroll', 'Bonus', or 'Invoice' scams.")
-    if "High Anger / Frustration" in triggers:
-        print(f"{Fore.RED}⚠️ ALERT: Target is likely to click on 'Complaint Resolution' or 'Urgent Service Restore' links.")
-    if "Burnout / Fatigue" in triggers:
-        print(f"{Fore.RED}⚠️ ALERT: Cognitive fatigue detected. Attention span is low; prone to accidental clicks.")
-
-    print(f"\n{Fore.MAGENTA}>>> TOTAL HUMAN VULNERABILITY SCORE: {risk_score}/100")
-    print(Style.RESET_ALL)
-
-# Main Execution Loop
-if __name__ == "__main__":
-    data = load_target_data()
-    
-    if data:
-        polarity, triggers = analyze_psychology(data['recent_posts'])
-        generate_risk_report(data['real_name'], polarity, triggers)
+    with c3:
+        st.markdown("<div class='report-box'>", unsafe_allow_html=True)
+        st.subheader("🎯 ACTION PLAN")
+        if risk > 70:
+            st.error("CRITICAL RISK")
+            st.write("Target compromised. Start Protocols.")
+        elif risk > 40:
+            st.warning("ELEVATED RISK")
+            st.write("Monitor financials.")
+        else:
+            st.success("STABLE")
+        st.markdown("</div>", unsafe_allow_html=True)

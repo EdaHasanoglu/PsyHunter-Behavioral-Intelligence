@@ -1,2 +1,4 @@
 textblob
 colorama
+streamlit
+plotly
